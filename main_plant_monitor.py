@@ -147,6 +147,8 @@ def get_influxdb_time():
 def get_errorlog_time():
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+### Main Function
+
 if __name__ == '__main__':
     while True:
         try:
@@ -175,14 +177,40 @@ if __name__ == '__main__':
                 # starts the loop over again
                 continue
 
-            ### Real Time Data Processing: status of plant detection in time domain
-            
+            ### Real Time Data Processing: detection of the environment status of the plant in time domain
+            # Equation of ellipse: ([x-i]^2)/(a^2) + ([y-j]^2)/(b^2) = 1
+            # x = humidity
+            # y = temperature
+            # (i, j) is the point at center of the ellipse (midpoint of plant settings values)
+            # a and b are the semi-axes (half of the difference between plant settings values)
+            i = (HUMIDITY_MAX + HUMIDITY_MIN) / 2
+            j = (TEMPERATURE_MAX + TEMPERATURE_MIN) / 2
+            a = (HUMIDITY_MAX - HUMIDITY_MIN) / 2 
+            b = (TEMPERATURE_MAX - TEMPERATURE_MIN) / 2
+            # plot the current values on the ellipse
+            x = (humidity - i) * (humidity - i) / (a * a)
+            y = (temperature - j) * (temperature - j) / (b * b)
+            plot = x + y
+            # applies values to the ellipse to determine environment status (0 = bad, 1 = good)
+            environment_status = 0
+            if plot <= 1:
+                environment_status = 1
+
+            ### Real Time Data Processing: detection of water levels in the time domain
+            # 0 = needs water, 1 = good, 2 = overwatered
+            water_status = 1
+            if moisture < MOISTURE_MIN:
+                water_status = 0
+            elif moisture > MOISTURE_MAX:
+                water_status = 2
 
             ### sends data to InfluxDB on AWS EC2 server
             print(temperature)
             print(humidity)
             print(light)
             print(moisture)
+            print(environment_status)
+            print(water_status)
             print()
 
         except KeyboardInterrupt:
