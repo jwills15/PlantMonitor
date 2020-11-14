@@ -20,9 +20,6 @@ import grovepi
 
 ### Documentation for Temperature and Humidity Sensor 
 ### https://wiki.seeedstudio.com/Grove-TemperatureAndHumidity_Sensor/
-# Appending the folder of the Grove Temperature and Humidity Sensor for import
-sys.path.append('GrovePi-EE250/Software/Python/grove_dht_pro_filter/')
-from grove_dht import Dht
 
 ### Settings for Temperature and Humidity Sensor
 # Connect the Grove Temperature and Humidity Sensor to digital port 4 (D4)
@@ -69,6 +66,32 @@ MOISTURE_MAX = 90
 
 ### Helper Function Definitions
 
+# returns the average of a list
+def get_list_average(passed_list):
+    return (sum(passed_list) / len(passed_list))
+
+# Real Time Filtering in Time Domain: Low Pass Filter
+def low_pass_filter(passed_list):
+    list_len = len(passed_list)
+    # iterates through each element in the list and looks at the two adjacent items for a pure moving average filter
+    for i in range(list_len):
+        pure_average_filter = []
+        pure_average_filter.append(passed_list[i])
+        if (i + 1) == list_len and list_len > 2:
+            pure_average_filter.append(passed_list[i-1])
+            pure_average_filter.append(passed_list[i-2])
+        elif i == 0 and list_len > 2:
+            pure_average_filter.append(passed_list[i+1])
+            pure_average_filter.append(passed_list[i+2])
+        elif list_len > 2:
+            pure_average_filter.append(passed_list[i-1])
+            pure_average_filter.append(passed_list[i+1])
+        # gets the average from the current and adjacent and modifies value in list
+        pure_average_filter = get_list_average(pure_average_filter)
+        passed_list[i] = pure_average_filter
+    # returns the filtered list
+    return passed_list
+
 def get_dht_in_f():
     temperature, humidity = grovepi.dht(DHT_PORT, 0)
     if temperature is None or humidity is None:
@@ -76,44 +99,46 @@ def get_dht_in_f():
         return (temperature, humidity)
     # converts the temperature from Celcius to Fahrenheit
     temperature = (temperature * 9 / 5) + 32
-    temperature = round(temperature, 2)
+    # rounds the values
+    temperature = round(temperature, 1)
+    humidity = round(humidity, 1)
     # return the temperature in Fahrenheit and humidity percentage
     return (temperature, humidity)
 
 def get_light_average_in_percent():
-    light = 0
+    light_list = []
     for i in range(LIGHT_AVERAGE_AMOUNT):
         current = grovepi.analogRead(LIGHT_PORT)
-        print(current)
-        if current > LIGHT_SENSOR_MAX:
-            # bad readings of light sensor are values greater than max
-            return None
-        # reading was good, add for averaging
-        light = light + current
+        if current < LIGHT_SENSOR_MAX:
+            # reading was good, add to list of values
+            light_list.append(current)
         # waits 1 second between sensor readings
         time.sleep(1)
-    # takes the average of the LIGHT_AVERAGE_AMOUNT numbers
-    light = light / LIGHT_AVERAGE_AMOUNT
-    light = round(light, 2)
+    # puts the values through a low pass filter
+    light_list = low_pass_filter(light_list)
+    # takes the average of the low pass filter values
+    light = get_list_average(light_list)
+    # converts the average to a percent
+    light = 100 * (light / LIGHT_SENSOR_MAX)
+    light = round(light, 1)
     return light
 
 def get_moisture_average_in_percent():
-    moisture = 0
+    moisture_list = []
     for i in range(MOISTURE_AVERAGE_AMOUNT):
         current = grovepi.analogRead(MOISTURE_PORT)
-        print(current)
-        if current > MOISTURE_SENSOR_MAX:
-            # bad readings of moisture sensor are values greater than max
-            return None
-        # reading was good, add for averaging
-        moisture = moisture + current
+        if current < MOISTURE_SENSOR_MAX:
+            # reading was good, add to list of values
+            moisture_list.append(current)
         # waits 1 second between sensor readings
         time.sleep(1)
-    # takes the average of the MOISTURE_AVERAGE_AMOUNT numbers
-    moisture = moisture / MOISTURE_AVERAGE_AMOUNT
+    # puts the values through a low pass filter
+    moisture_list = low_pass_filter(moisture_list)
+    # takes the average of the low pass filter values
+    moisture = get_list_average(moisture_list)
     # converts the average to a percent
     moisture = 100 * (moisture / MOISTURE_SENSOR_MAX)
-    moisture = round(moisture, 2)
+    moisture = round(moisture, 1)
     return moisture
 
 def get_influxdb_time():
@@ -140,11 +165,11 @@ if __name__ == '__main__':
                 moisture = get_moisture_average_in_percent()
 
             ### ensure that all sensor readings were good
-            if temperature is None or humidity is None or light is None or moisture is None:
-                # one (or more) sensors did not provide good values, write to log
+            if temperature is None or humidity is None:
+                # dht sensor did not provide good values, write to log
                 error_log = open("error_log.txt", "a")
                 current_time = get_errorlog_time()
-                message = current_time + ": Error while reading sensors.\n"
+                message = current_time + ": Error while reading temperature and humidity sensor.\n"
                 error_log.write(message)
                 error_log.close()
                 # starts the loop over again
@@ -163,8 +188,15 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             # stops the script with "ctrl + c"
             break
+        except ZeroDivisionError:
+            # caused when light and/or moisture sensors do not provide good values
+            error_log = open("error_log.txt", "a")
+            current_time = get_errorlog_time()
+            message = current_time + ": Error while reading light and/or moisture sensor.\n"
+            error_log.write(message)
+            error_log.close()
         except:
-            # catches all exceptions so that loop does not crash
+            # generic catch for exceptions not handled so that loop does not crash
             error_log = open("error_log.txt", "a")
             current_time = get_errorlog_time()
             message = current_time + ": Error caught in loop.\n"
