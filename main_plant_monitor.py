@@ -14,6 +14,11 @@ import threading
 
 lock = threading.Lock()
 
+### Documentation for InfluxDB
+### https://influxdb-python.readthedocs.io/en/latest/include-readme.html#id2
+# Import for access to InfluxDB
+from influxdb import InfluxDBClient
+
 # Appending the folder of all the GrovePi libraries to 'import grovepi`
 sys.path.append('GrovePi-EE250/Software/Python/')
 import grovepi
@@ -50,8 +55,12 @@ MOISTURE_SENSOR_MAX = 700
 MOISTURE_AVERAGE_AMOUNT = 5
 
 ### Setup for InfluxDB
-#INFLUXDB_HOST = TODO
-#INFLUXDB_PORT = TODO
+INFLUXDB_HOST = '54.193.218.65' # IP address of the AWS EC2 instance
+INFLUXDB_PORT = 8086
+INFLUXDB_USER = 'plant'
+INFLUXDB_PASSWORD = 'finalproject'
+INFLUXDB_DATABASE = 'plant_data'
+influxdb_client = InfluxDBClient(INFLUXDB_HOST, INFLUXDB_PORT, INFLUXDB_USER, INFLUXDB_PASSWORD, INFLUXDB_DATABASE)
 
 ### Settings for Plant Environment
 # temperature max and minimum (in Fahrenheit)
@@ -92,6 +101,7 @@ def low_pass_filter(passed_list):
     # returns the filtered list
     return passed_list
 
+# gets the dht sensor readings and converts temp to Fahrenheit
 def get_dht_in_f():
     temperature, humidity = grovepi.dht(DHT_PORT, 0)
     if temperature is None or humidity is None:
@@ -105,6 +115,7 @@ def get_dht_in_f():
     # return the temperature in Fahrenheit and humidity percentage
     return (temperature, humidity)
 
+# gets the light sensor readings and converts to percent
 def get_light_average_in_percent():
     light_list = []
     for i in range(LIGHT_AVERAGE_AMOUNT):
@@ -123,6 +134,7 @@ def get_light_average_in_percent():
     light = round(light, 1)
     return light
 
+# gets the moisture sensor readings and converts to percent
 def get_moisture_average_in_percent():
     moisture_list = []
     for i in range(MOISTURE_AVERAGE_AMOUNT):
@@ -141,11 +153,30 @@ def get_moisture_average_in_percent():
     moisture = round(moisture, 1)
     return moisture
 
+# gets the current time in InfluxDB format
 def get_influxdb_time():
     return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
+# gets the current time in normal format
 def get_errorlog_time():
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+# sends data with the specified value to the specified table in the database
+def send_data_to_influx(table, value):
+    data_json = [
+        {
+            "measurement": table,
+            "tags": {
+                "host": "server01",
+                "region": "us-west"
+            },
+            "time": get_influxdb_time(),
+            "fields": {
+                "value": value
+            }
+        }
+    ]
+    influxdb_client.write_points(data_json)
 
 ### Main Function
 
@@ -205,13 +236,12 @@ if __name__ == '__main__':
                 water_status = 2
 
             ### sends data to InfluxDB on AWS EC2 server
-            print(temperature)
-            print(humidity)
-            print(light)
-            print(moisture)
-            print(environment_status)
-            print(water_status)
-            print()
+            send_data_to_influx("temperature", temperature)
+            send_data_to_influx("humidity", humidity)
+            send_data_to_influx("light", light)
+            send_data_to_influx("moisture", moisture)
+            send_data_to_influx("environment_status", environment_status)
+            send_data_to_influx("water_status", water_status)
 
         except KeyboardInterrupt:
             # stops the script with "ctrl + c"
