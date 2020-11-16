@@ -82,6 +82,7 @@ def get_list_average(passed_list):
 # Real Time Filtering in Time Domain: Low Pass Filter
 def low_pass_filter(passed_list):
     list_len = len(passed_list)
+    return_list = []
     # iterates through each element in the list and looks at the two adjacent items for a pure moving average filter
     for i in range(list_len):
         pure_average_filter = []
@@ -97,9 +98,9 @@ def low_pass_filter(passed_list):
             pure_average_filter.append(passed_list[i+1])
         # gets the average from the current and adjacent and modifies value in list
         pure_average_filter = get_list_average(pure_average_filter)
-        passed_list[i] = pure_average_filter
+        return_list.append(pure_average_filter)
     # returns the filtered list
-    return passed_list
+    return return_list
 
 # gets the dht sensor readings and converts temp to Fahrenheit
 def get_dht_in_f():
